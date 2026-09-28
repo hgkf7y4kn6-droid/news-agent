@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>News Agent</title>
+  <style>
+    :root {
+      --bg: #f6f7f9; --panel: #ffffff; --text: #1b1f24; --muted: #5f6b7a; --border: #e2e6eb;
+      --accent: #2563eb; --accent-soft: #e8efff; --danger: #c2410c;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1216; --panel: #171b21; --text: #e6e9ee; --muted: #97a1ae; --border: #2a3039;
+        --accent: #6c9cff; --accent-soft: #1d2940; --danger: #fb923c;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+    header h1 { font-size: 18px; margin: 0; flex: 1; }
+    button { font: inherit; cursor: pointer; border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 8px; padding: 6px 12px; }
+    button:hover { border-color: var(--accent); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .layout { display: grid; grid-template-columns: 280px minmax(0, 1fr) 360px; height: calc(100vh - 57px); }
+    aside, main, section.chat { overflow-y: auto; }
+    aside { border-right: 1px solid var(--border); background: var(--panel); padding: 12px 0; }
+    aside .my-feed { margin: 0 12px 8px; width: calc(100% - 24px); }
+    details { border-top: 1px solid var(--border); }
+    summary { padding: 10px 16px; font-weight: 600; cursor: pointer; }
+    .source { display: flex; align-items: center; gap: 6px; padding: 4px 12px 4px 20px; }
+    .source.active { background: var(--accent-soft); }
+    .source .name { flex: 1; background: none; border: 0; padding: 4px 0; text-align: left; border-radius: 0; }
+    .source .like { border: 0; padding: 2px 6px; background: none; font-size: 16px; }
+    .source input { width: 48px; padding: 3px 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
+    main { padding: 20px 28px; }
+    main h2 { margin: 0 0 4px; }
+    .meta { color: var(--muted); font-size: 13px; }
+    .article { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin: 12px 0; }
+    .article a { color: var(--text); font-weight: 600; text-decoration: none; }
+    .article a:hover { color: var(--accent); }
+    .article p { margin: 6px 0 0; color: var(--muted); }
+    .article .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; }
+    .article .hide { font-size: 13px; padding: 2px 8px; }
+    .notice { padding: 12px 16px; border-radius: 10px; background: var(--accent-soft); margin: 12px 0; }
+    .notice.error { color: var(--danger); }
+    section.chat { border-left: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; overflow: hidden; }
+    .chat-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+    .chat-head h2 { font-size: 16px; margin: 0; }
+    #messages { flex: 1; overflow-y: auto; padding: 12px 16px; }
+    .msg { margin: 10px 0; padding: 10px 12px; border-radius: 10px; white-space: pre-wrap; word-wrap: break-word; }
+    .msg.user { background: var(--accent-soft); margin-left: 32px; }
+    .msg.model { background: var(--bg); margin-right: 16px; }
+    .msg .cites { margin-top: 8px; font-size: 13px; }
+    .msg .cites a { color: var(--accent); display: block; }
+    form.ask { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
+    form.ask textarea { flex: 1; resize: none; font: inherit; padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 240px minmax(0, 1fr); }
+      section.chat { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--border); height: 70vh; }
+      .layout { height: auto; }
+    }
+    @media (max-width: 700px) {
+      .layout { grid-template-columns: 1fr; }
+      aside { max-height: 40vh; border-right: 0; border-bottom: 1px solid var(--border); }
+      main { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📰 News Agent</h1>
+    <span class="meta" id="status"></span>
+  </header>
+  <div class="layout">
+    <aside>
+      <button class="primary my-feed" id="my-feed">★ My feed</button>
+      <div id="categories"></div>
+    </aside>
+    <main id="content">
+      <div class="notice">Pick a source on the left, or star sources to build <b>My feed</b>. Articles you open are indexed so you can ask about them in chat.</div>
+    </main>
+    <section class="chat">
+      <div class="chat-head">
+        <h2>Ask about the news</h2>
+        <button id="clear-chat" title="Clear conversation">Clear</button>
+      </div>
+      <div id="messages"></div>
+      <form class="ask" id="ask">
+        <textarea id="question" rows="2" placeholder="e.g. What's happening with interest rates?" maxlength="2000"></textarea>
+        <button class="primary" type="submit">Send</button>
+      </form>
+    </section>
+  </div>
+
+<script>
+const $ = (sel) => document.querySelector(sel);
+const el = (tag, props = {}, ...children) => {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+};
+const safeUrl = (u) => (/^https?:\/\//i.test(u) ? u : "#");
+
+async function api(path, { method = "GET", body } = {}) {
+  const res = await fetch(path, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  return data;
+}
+
+let activeSourceId = null;
+
+async function loadSources() {
+  const { categories } = await api("/api/sources");
+  const root = $("#categories");
+  root.replaceChildren();
+  for (const cat of categories) {
+    const details = el("details", { open: cat.sources.some((s) => s.liked) }, el("summary", { textContent: cat.name }));
+    for (const s of cat.sources) {
+      const like = el("button", { className: "like", title: "Add to My feed", textContent: s.liked ? "★" : "☆" });
+      like.onclick = async () => {
+        s.liked = !s.liked;
+        like.textContent = s.liked ? "★" : "☆";
+        await api("/api/preferences/source", { method: "POST", body: { sourceId: s.id, liked: s.liked } });
+      };
+      const limit = el("input", { type: "number", min: 1, max: 50, placeholder: "10", title: "Max articles", value: s.maxArticles ?? "" });
+      limit.onchange = async () => {
+        const v = limit.value === "" ? null : Number(limit.value);
+        try {
+          await api("/api/preferences/source", { method: "POST", body: { sourceId: s.id, maxArticles: v } });
+          if (activeSourceId === s.id) showSource(s.id);
+        } catch (e) { alert(e.message); }
+      };
+      const name = el("button", { className: "name", textContent: s.name });
+      name.onclick = () => showSource(s.id);
+      details.append(el("div", { className: "source", dataset: { id: s.id } }, like, name, limit));
+    }
+    root.append(details);
+  }
+}
+
+function setActive(id) {
+  activeSourceId = id;
+  document.querySelectorAll(".source").forEach((n) => n.classList.toggle("active", n.dataset.id === id));
+}
+
+function renderArticles(title, subtitle, articles, errors = []) {
+  const content = $("#content");
+  content.replaceChildren(el("h2", { textContent: title }), el("div", { className: "meta", textContent: subtitle }));
+  for (const err of errors) content.append(el("div", { className: "notice error", textContent: err }));
+  if (!articles.length) content.append(el("div", { className: "notice", textContent: "No articles to show." }));
+  for (const a of articles) {
+    const hide = el("button", { className: "hide", textContent: "👎 Hide", title: "Hide this article from now on" });
+    const card = el("div", { className: "article" },
+      el("a", { href: safeUrl(a.link), target: "_blank", rel: "noopener noreferrer", textContent: a.title }),
+      a.summary ? el("p", { textContent: a.summary }) : "",
+      el("div", { className: "row" },
+        el("span", { className: "meta", textContent: [a.source, a.published && new Date(a.published).toLocaleString()].filter(Boolean).join(" · ") }),
+        hide));
+    hide.onclick = async () => {
+      await api("/api/articles/dislike", { method: "POST", body: { link: a.link, title: a.title, source: a.source } });
+      card.remove();
+    };
+    content.append(card);
+  }
+}
+
+function showLoading(text) {
+  $("#content").replaceChildren(el("div", { className: "notice", textContent: text }));
+}
+
+async function showSource(id) {
+  setActive(id);
+  showLoading("Loading…");
+  try {
+    const { source, articles } = await api(`/api/feed/${encodeURIComponent(id)}`);
+    renderArticles(source.name, source.category, articles);
+  } catch (e) {
+    $("#content").replaceChildren(el("div", { className: "notice error", textContent: e.message }));
+  }
+}
+
+async function showMyFeed() {
+  setActive(null);
+  showLoading("Loading your feed…");
+  try {
+    const { articles, errors } = await api("/api/feed");
+    renderArticles("My feed", "Latest from your starred sources", articles, errors);
+    if (!articles.length && !errors.length) {
+      $("#content").append(el("div", { className: "notice", textContent: "Star (☆) some sources on the left to fill this feed." }));
+    }
+  } catch (e) {
+    $("#content").replaceChildren(el("div", { className: "notice error", textContent: e.message }));
+  }
+}
+
+function addMessage(role, text, sources = []) {
+  const msg = el("div", { className: `msg ${role}`, textContent: text });
+  if (sources.length) {
+    msg.append(el("div", { className: "cites" }, ...sources.map((s, i) =>
+      el("a", { href: safeUrl(s.link), target: "_blank", rel: "noopener noreferrer", textContent: `[${i + 1}] ${s.title} — ${s.source}` }))));
+  }
+  $("#messages").append(msg);
+  msg.scrollIntoView({ behavior: "smooth", block: "end" });
+  return msg;
+}
+
+async function loadChatHistory() {
+  const { chatHistory } = await api("/api/preferences");
+  for (const turn of chatHistory) addMessage(turn.role, turn.text);
+}
+
+$("#ask").onsubmit = async (e) => {
+  e.preventDefault();
+  const input = $("#question");
+  const message = input.value.trim();
+  if (!message) return;
+  input.value = "";
+  addMessage("user", message);
+  const pending = addMessage("model", "Thinking…");
+  try {
+    const { reply, sources } = await api("/api/chat", { method: "POST", body: { message } });
+    pending.remove();
+    addMessage("model", reply, sources);
+  } catch (err) {
+    pending.textContent = `⚠️ ${err.message}`;
+  }
+};
+$("#question").onkeydown = (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#ask").requestSubmit(); }
+};
+$("#clear-chat").onclick = async () => {
+  await api("/api/chat", { method: "DELETE", body: {} });
+  $("#messages").replaceChildren();
+};
+$("#my-feed").onclick = showMyFeed;
+
+(async () => {
+  try {
+    // Health first so the user cookie is set before the parallel requests below.
+    const health = await api("/api/health");
+    await Promise.all([loadSources(), loadChatHistory()]);
+    $("#status").textContent = health.chat
+      ? (health.retrieval ? "" : "Chat on · article search off (no Vectorize index)")
+      : "Chat disabled (GEMINI_API_KEY not set)";
+  } catch (e) {
+    $("#status").textContent = e.message;
+  }
+})();
+</script>
+</body>
+</html>

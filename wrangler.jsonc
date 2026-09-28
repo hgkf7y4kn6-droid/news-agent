@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "news-agent",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // Static front-end (public/index.html). Anything that isn't a file falls through to the Worker.
+  "assets": { "directory": "./public", "not_found_handling": "none" },
+
+  // Per-user preferences + chat history.
+  // Create with: npx wrangler kv namespace create USER_STATE  -> paste the id below.
+  "kv_namespaces": [
+    { "binding": "USER_STATE", "id": "REPLACE_WITH_KV_NAMESPACE_ID" }
+  ],
+
+  // Article embeddings for chat retrieval (RAG).
+  // Create with: npx wrangler vectorize create news-articles --dimensions=768 --metric=cosine
+  "vectorize": [
+    { "binding": "VECTORIZE", "index_name": "news-articles", "remote": true }
+  ],
+
+  "vars": {
+    "CHAT_MODEL": "gemini-2.5-flash",
+    "EMBEDDING_MODEL": "gemini-embedding-001"
+  }
+  // Secret (not stored here): npx wrangler secret put GEMINI_API_KEY
+}

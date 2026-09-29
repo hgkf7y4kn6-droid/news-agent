@@ -23,24 +23,35 @@ The news reader is public. Each browser gets its own anonymous profile, identifi
 
 ## Deploy to Cloudflare
 
-Prerequisites: Node.js 20+, a Cloudflare account, and a Gemini API key from <https://aistudio.google.com/apikey>.
+Prerequisites: Node.js 22+, a Cloudflare account, and a Gemini API key from <https://aistudio.google.com/apikey>.
+
+The KV namespace for preferences is created automatically on the first deploy. The Vectorize index is the one resource you have to create yourself, **before the first deploy**, because Wrangler can't create it and the deploy fails if it's missing.
+
+### Option A: from your computer
 
 ```bash
 npm install
 npx wrangler login
 
-# 1. KV namespace for user preferences. Copy the printed id into wrangler.jsonc (replace REPLACE_WITH_KV_NAMESPACE_ID).
-npx wrangler kv namespace create USER_STATE
-
-# 2. Vector index for chat retrieval. The dimensions must match EMBEDDING_DIMENSIONS in src/gemini.ts.
+# 1. One-time: vector index for chat retrieval. The dimensions must match EMBEDDING_DIMENSIONS in src/gemini.ts.
 npx wrangler vectorize create news-articles --dimensions=768 --metric=cosine
+
+# 2. Deploy (also creates the KV namespace the first time).
+npm run deploy
 
 # 3. Gemini API key, stored as a secret.
 npx wrangler secret put GEMINI_API_KEY
-
-# 4. Deploy.
-npm run deploy
 ```
+
+### Option B: Cloudflare Git integration (Workers Builds)
+
+1. Create the Vectorize index once, either with the command in step 1 above or in the dashboard: Storage & Databases → Vectorize → Create index, named `news-articles`, 768 dimensions, cosine metric.
+2. In Workers & Pages → Create → Import a repository, pick this repo. Keep the defaults: build command empty (or `npm ci`), deploy command `npx wrangler deploy`.
+   - **The Worker name must be `news-agent`**, matching `name` in `wrangler.jsonc`. Otherwise the build fails. Rename one or the other so they match.
+   - Set the production branch to the branch that has this code.
+3. After the first successful deploy, add the secret under the Worker's Settings → Variables and Secrets: `GEMINI_API_KEY` (type Secret).
+
+The build uses Node 22 from `.node-version`.
 
 Chat stays locked until you complete the Access setup below. The news reader works immediately.
 

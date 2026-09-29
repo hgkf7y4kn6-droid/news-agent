@@ -22,7 +22,7 @@
   ],
 
   "vars": {
-    "CHAT_MODEL": "gemini-2.5-flash",
+    "CHAT_MODEL": "gemini-3.8-flash",
     "EMBEDDING_MODEL": "gemini-embedding-001",
 
     // Chat is locked behind Cloudflare Access (see README). Until both of these are set, chat is disabled.

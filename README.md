@@ -99,7 +99,7 @@ These are set in `wrangler.jsonc` under `vars`:
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `CHAT_MODEL` | `gemini-2.5-flash` | Any Gemini model that supports `generateContent`. |
+| `CHAT_MODEL` | `gemini-3.8-flash` | Any Gemini model that supports `generateContent`. Change it here when Google releases or retires models; no code changes needed. |
 | `EMBEDDING_MODEL` | `gemini-embedding-001` | If you change it, recreate the Vectorize index. |
 | `ACCESS_TEAM_DOMAIN` | empty | Required for chat, e.g. `myteam.cloudflareaccess.com`. |
 | `ACCESS_AUD` | empty | Required for chat: the Access application's AUD tag. |

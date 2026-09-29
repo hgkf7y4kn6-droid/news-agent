@@ -1,1 +1,4 @@
 GEMINI_API_KEY=your-key-from-https://aistudio.google.com/apikey
+# Cloudflare Access isn't in front of `wrangler dev`, so skip the chat login check locally.
+# Only honoured for requests to localhost.
+CHAT_AUTH_DISABLED=true

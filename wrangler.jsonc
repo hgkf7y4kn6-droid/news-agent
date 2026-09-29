@@ -23,7 +23,15 @@
 
   "vars": {
     "CHAT_MODEL": "gemini-2.5-flash",
-    "EMBEDDING_MODEL": "gemini-embedding-001"
+    "EMBEDDING_MODEL": "gemini-embedding-001",
+
+    // Chat is locked behind Cloudflare Access (see README). Until both of these are set, chat is disabled.
+    // Team domain from Zero Trust -> Settings -> Custom Pages, e.g. "myteam.cloudflareaccess.com".
+    "ACCESS_TEAM_DOMAIN": "",
+    // "Application Audience (AUD) Tag" from the Access application's Overview tab.
+    "ACCESS_AUD": "",
+    // Optional extra allowlist enforced by the Worker, comma-separated. The Access policy is the primary list.
+    "CHAT_ALLOWED_EMAILS": ""
   }
   // Secret (not stored here): npx wrangler secret put GEMINI_API_KEY
 }

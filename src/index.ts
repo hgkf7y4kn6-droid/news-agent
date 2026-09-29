@@ -1,10 +1,11 @@
+import { authorizeChat, AuthError, type AccessEnv } from "./access";
 import { fetchFeed, FeedError, type Article } from "./feeds";
 import { GeminiError, generateReply } from "./gemini";
 import { indexArticles, ragEnabled, searchArticles, type RagEnv } from "./rag";
 import { CATEGORIES, SOURCES, SOURCES_BY_ID } from "./sources";
-import { loadState, saveState, type UserState } from "./state";
+import { loadChatHistory, loadState, saveChatHistory, saveState, type UserState } from "./state";
 
-export interface Env extends RagEnv {
+export interface Env extends RagEnv, AccessEnv {
   USER_STATE: KVNamespace;
 }
 
@@ -44,7 +45,7 @@ export default {
     try {
       response = await route({ env, ctx, userId, request, url });
     } catch (err) {
-      if (err instanceof HttpError) {
+      if (err instanceof HttpError || err instanceof AuthError) {
         response = json({ error: err.message }, err.status);
       } else if (err instanceof FeedError) {
         response = json({ error: err.message }, 502);
@@ -81,10 +82,13 @@ async function route(c: RequestContext): Promise<Response> {
   if (path === "/api/feed" && method === "GET") return myFeed(c);
   const feedMatch = path.match(/^\/api\/feed\/([^/]+)$/);
   if (feedMatch && method === "GET") return sourceFeed(c, decodeURIComponent(feedMatch[1]));
-  if (path === "/api/preferences" && method === "GET") return json(await loadState(c.env.USER_STATE, c.userId));
+  if (path === "/api/preferences" && method === "GET") return preferences(c);
   if (path === "/api/preferences/source" && method === "POST") return updateSourcePreference(c);
   if (path === "/api/articles/dislike" && method === "POST") return dislikeArticle(c);
   if (path === "/api/articles/dislike" && method === "DELETE") return undislikeArticle(c);
+  // Everything under /api/chat is meant to sit behind a Cloudflare Access application.
+  if (path === "/api/chat" && method === "GET") return chatSession(c);
+  if (path === "/api/chat/login" && method === "GET") return chatLogin(c);
   if (path === "/api/chat" && method === "POST") return chat(c);
   if (path === "/api/chat" && method === "DELETE") return clearChat(c);
   if (path === "/api/health" && method === "GET") return health(c);
@@ -164,6 +168,10 @@ async function indexInBackground(env: Env, articles: Article[]): Promise<void> {
 
 // ---------- Preferences ----------
 
+async function preferences(c: RequestContext): Promise<Response> {
+  return json(await loadState(c.env.USER_STATE, c.userId));
+}
+
 async function updateSourcePreference(c: RequestContext): Promise<Response> {
   const body = await readJson<{ sourceId?: string; liked?: boolean; maxArticles?: number | null }>(c.request);
   const sourceId = String(body.sourceId ?? "");
@@ -215,14 +223,29 @@ async function undislikeArticle(c: RequestContext): Promise<Response> {
 
 // ---------- Chat ----------
 
+async function chatSession(c: RequestContext): Promise<Response> {
+  const user = await authorizeChat(c.request, c.env);
+  return json({ email: user.email, history: await loadChatHistory(c.env.USER_STATE, user.email) });
+}
+
+/** Opened in the browser: Access shows its login page first, then this sends the user back to the app. */
+async function chatLogin(c: RequestContext): Promise<Response> {
+  await authorizeChat(c.request, c.env);
+  return Response.redirect(new URL("/", c.url).toString(), 302);
+}
+
 async function chat(c: RequestContext): Promise<Response> {
+  const user = await authorizeChat(c.request, c.env);
   const body = await readJson<{ message?: string }>(c.request);
   const message = String(body.message ?? "").trim();
   if (!message) throw new HttpError(400, "message is required");
   if (message.length > MAX_MESSAGE_CHARS) throw new HttpError(400, `message must be under ${MAX_MESSAGE_CHARS} characters`);
   if (!c.env.GEMINI_API_KEY) throw new HttpError(503, "Chat is not configured: set the GEMINI_API_KEY secret");
 
-  const state = await loadState(c.env.USER_STATE, c.userId);
+  const [state, history] = await Promise.all([
+    loadState(c.env.USER_STATE, c.userId),
+    loadChatHistory(c.env.USER_STATE, user.email),
+  ]);
   const disliked = new Set(state.dislikedArticles.map((a) => a.link));
 
   let context: Article[] = [];
@@ -239,13 +262,13 @@ async function chat(c: RequestContext): Promise<Response> {
     : "No indexed articles matched this question.";
 
   const reply = await generateReply(c.env, SYSTEM_PROMPT, [
-    ...state.chatHistory,
+    ...history,
     { role: "user", text: `Relevant articles:\n${contextBlock}\n\nQuestion: ${message}` },
   ]);
 
   // Store the bare question (not the retrieved context) so history stays small.
-  state.chatHistory.push({ role: "user", text: message }, { role: "model", text: reply });
-  await saveState(c.env.USER_STATE, c.userId, state);
+  history.push({ role: "user", text: message }, { role: "model", text: reply });
+  await saveChatHistory(c.env.USER_STATE, user.email, history);
 
   return json({
     reply,
@@ -254,9 +277,8 @@ async function chat(c: RequestContext): Promise<Response> {
 }
 
 async function clearChat(c: RequestContext): Promise<Response> {
-  const state = await loadState(c.env.USER_STATE, c.userId);
-  state.chatHistory = [];
-  await saveState(c.env.USER_STATE, c.userId, state);
+  const user = await authorizeChat(c.request, c.env);
+  await saveChatHistory(c.env.USER_STATE, user.email, []);
   return json({ ok: true });
 }
 
@@ -266,6 +288,7 @@ function health(c: RequestContext): Response {
   return json({
     ok: true,
     chat: Boolean(c.env.GEMINI_API_KEY),
+    chatAccessConfigured: Boolean(c.env.ACCESS_TEAM_DOMAIN && c.env.ACCESS_AUD),
     retrieval: ragEnabled(c.env),
     sources: SOURCES.length,
   });

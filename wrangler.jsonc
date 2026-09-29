@@ -16,12 +16,16 @@
     { "binding": "USER_STATE" }
   ],
 
-  // Article embeddings for chat retrieval (RAG).
-  // Wrangler can't create Vectorize indexes on deploy, so create it once before the first deploy:
-  //   npx wrangler vectorize create news-articles --dimensions=768 --metric=cosine
-  "vectorize": [
-    { "binding": "VECTORIZE", "index_name": "news-articles", "remote": true }
-  ],
+  // Article search for chat (RAG): OFF until the Vectorize index exists, because deploys fail
+  // if the binding points at a missing index. Without it, chat still works but doesn't cite loaded articles.
+  // To turn it on:
+  //   1. Create the index in the SAME Cloudflare account the Worker deploys to:
+  //        npx wrangler vectorize create news-articles --dimensions=768 --metric=cosine
+  //   2. Confirm it's listed:  npx wrangler vectorize list
+  //   3. Uncomment the block below and push.
+  // "vectorize": [
+  //   { "binding": "VECTORIZE", "index_name": "news-articles", "remote": true }
+  // ],
 
   "vars": {
     "CHAT_MODEL": "gemini-3.8-flash",

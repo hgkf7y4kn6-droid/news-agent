@@ -25,7 +25,7 @@ The news reader is public. Each browser gets its own anonymous profile, identifi
 
 Prerequisites: Node.js 22+, a Cloudflare account, and a Gemini API key from <https://aistudio.google.com/apikey>.
 
-The KV namespace for preferences is created automatically on the first deploy. The Vectorize index is the one resource you have to create yourself, **before the first deploy**, because Wrangler can't create it and the deploy fails if it's missing.
+The KV namespace for preferences is created automatically on the first deploy. Article search for chat (Vectorize) is **off by default**, so the first deploy needs no manual setup. See [Turning on article search](#turning-on-article-search) below.
 
 ### Option A: from your computer
 
@@ -33,23 +33,27 @@ The KV namespace for preferences is created automatically on the first deploy. T
 npm install
 npx wrangler login
 
-# 1. One-time: vector index for chat retrieval. The dimensions must match EMBEDDING_DIMENSIONS in src/gemini.ts.
-npx wrangler vectorize create news-articles --dimensions=768 --metric=cosine
-
-# 2. Deploy (also creates the KV namespace the first time).
+# 1. Deploy (also creates the KV namespace the first time).
 npm run deploy
 
-# 3. Gemini API key, stored as a secret.
+# 2. Gemini API key, stored as a secret.
 npx wrangler secret put GEMINI_API_KEY
 ```
 
 ### Option B: Cloudflare Git integration (Workers Builds)
 
-1. Create the Vectorize index once, either with the command in step 1 above or in the dashboard: Storage & Databases → Vectorize → Create index, named `news-articles`, 768 dimensions, cosine metric.
-2. In Workers & Pages → Create → Import a repository, pick this repo. Keep the defaults: build command empty (or `npm ci`), deploy command `npx wrangler deploy`.
+1. In Workers & Pages → Create → Import a repository, pick this repo. Keep the defaults: build command empty (or `npm ci`), deploy command `npx wrangler deploy`.
    - **The Worker name must be `news-agent`**, matching `name` in `wrangler.jsonc`. Otherwise the build fails. Rename one or the other so they match.
    - Set the production branch to the branch that has this code.
-3. After the first successful deploy, add the secret under the Worker's Settings → Variables and Secrets: `GEMINI_API_KEY` (type Secret).
+2. After the first successful deploy, add the secret under the Worker's Settings → Variables and Secrets: `GEMINI_API_KEY` (type Secret).
+
+### Turning on article search
+
+Without article search, chat answers from the model's general knowledge. With it, the assistant searches the articles you've loaded and cites them. Wrangler can't create the Vectorize index during a deploy, and a deploy fails if the binding points at an index that doesn't exist, so:
+
+1. Create the index **in the same Cloudflare account the Worker deploys to**. Either run `npx wrangler vectorize create news-articles --dimensions=768 --metric=cosine`, or in the dashboard go to Storage & Databases → Vectorize → Create index, named `news-articles`, 768 dimensions, cosine metric.
+2. Confirm it exists with `npx wrangler vectorize list`, or on the dashboard's Vectorize page.
+3. Uncomment the `vectorize` block in `wrangler.jsonc` and push.
 
 The build uses Node 22 from `.node-version`.
 
@@ -95,7 +99,7 @@ npm run dev                      # http://localhost:8787
 
 Access isn't in front of `wrangler dev`, so `.dev.vars.example` sets `CHAT_AUTH_DISABLED=true`. The Worker only honours this for requests to `localhost`, so setting it on a deployed Worker won't unlock chat.
 
-Vectorize can't be emulated locally, so `wrangler dev` connects to the real `news-articles` index (`"remote": true` in `wrangler.jsonc`). You need to be logged in (`npx wrangler login`), and the index must exist. KV is simulated locally.
+KV is simulated locally. Vectorize can't be emulated, so once article search is on, `wrangler dev` connects to the real `news-articles` index (`"remote": true` in `wrangler.jsonc`), which needs `npx wrangler login`.
 
 Checks:
 
